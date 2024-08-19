@@ -53,7 +53,8 @@ def get_superpixel_segments(img: np.ndarray, segmentation_method: str) -> np.nda
         )
 
     if segmentation_method == "slic":
-        return slic(img, start_label=0)
+        # Changed: added channel_axis=None so that image is interpreted as 2D grayscale image.
+        return slic(img, start_label=0, channel_axis=None)
     elif segmentation_method == "felzenszwalb":
         return felzenszwalb(
             img,

@@ -9,7 +9,10 @@ import sys
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
+import cv2
+import matplotlib.pyplot as plt
 
+from pytorch_grad_cam.utils.image import show_cam_on_image
 from quantus.functions.perturb_func import baseline_replacement_by_indices
 from quantus.helpers import asserts, utils, warn
 from quantus.helpers.enums import (
@@ -26,6 +29,8 @@ if sys.version_info >= (3, 8):
     from typing import final
 else:
     from typing_extensions import final
+
+from config import *
 
 
 @final
@@ -286,18 +291,33 @@ class IROF(Metric[List[float]]):
         """
         # Predict on x.
         x_input = model.shape_input(x, x.shape, channel_first=True)
-        y_pred = float(model.predict(x_input)[:, y])
+        # CHANGED: Let's make y the index of the chosen action and  y_pred the logit of the chosen action
+        # Old line: y_pred = float(model.predict(x_input)[:, y])
+        y_pred = model.predict(x_input)[y]
+
+        # Selecting the last frame of input for segmenting
+        x_channel = x[FRAME_INDEX, :, :]  # Resulting shape will be (84, 84)
+
+        # Adding a new axis to make the shape (1, 84, 84)
+        x_channel = x_channel[np.newaxis, :, :]
 
         # Segment image.
+        # TODO: Image segments do not seem to correspond to relevant entitities in the input image.
         segments = utils.get_superpixel_segments(
-            img=np.moveaxis(x, 0, -1).astype("double"),
+            img=np.moveaxis(x_channel, 0, -1).astype("double"),
             segmentation_method=self.segmentation_method,
+
         )
         nr_segments = len(np.unique(segments))
         asserts.assert_nr_segments(nr_segments=nr_segments)
 
+        # Save segments as image on disk to see whether they make sense
+        # cv2.imwrite(f"gradcam/input_frames/input.jpg", x_channel.squeeze())
+        # cv2.imwrite(f"gradcam/segments/segments.jpg", segments)
+
         # Calculate average attribution of each segment.
         att_segs = np.zeros(nr_segments)
+        segments = segments.squeeze()
         for i, s in enumerate(range(nr_segments)):
             att_segs[i] = np.mean(a[:, segments == s])
 
@@ -308,24 +328,32 @@ class IROF(Metric[List[float]]):
         x_prev_perturbed = x
 
         for i_ix, s_ix in enumerate(s_indices):
-            # Perturb input by indices of attributions.
+            # Perturb input by indices of attributions across all 4 frames.
             a_ix = np.nonzero((segments == s_ix).flatten())[0]
-
+            #  TODO: Also investigate when the perturbation does not change the input.
             x_perturbed = self.perturb_func(
                 arr=x_prev_perturbed,
                 indices=a_ix,
                 indexed_axes=self.a_axes,
             )
+            warning_counter = 0
             warn.warn_perturbation_caused_no_change(
                 x=x_prev_perturbed, x_perturbed=x_perturbed
             )
 
             # Predict on perturbed input x.
             x_input = model.shape_input(x_perturbed, x.shape, channel_first=True)
-            y_pred_perturb = float(model.predict(x_input)[:, y])
+            # CHANGED: y is the index of the chosen action and  y_pred the logit of the chosen action
+            # Old line: y_pred_perturb = float(model.predict(x_input)[:, y])
+            y_pred_perturb = model.predict(x_input)[y]
+
+            # TODO: Use the absolute relative change in softmax(!) probabilities of the action logits due to
+            #  perturbation in IROF. model.predict[y] needs to be the softmax output of the model.
+            # |(y_hat_perturbed(a*) - y_hat(a*)) / y_hat(a*)| where y_hat is all the softmax probs and a* = argmax(y_hat)
 
             # Normalise the scores to be within range [0, 1].
-            preds.append(float(y_pred_perturb / y_pred))
+            # Old line: preds.append(float(y_pred_perturb / y_pred))
+            preds.append(float(abs(y_pred_perturb - y_pred) / y_pred))
             x_prev_perturbed = x_perturbed
 
         # Calculate the area over the curve (AOC) score.
