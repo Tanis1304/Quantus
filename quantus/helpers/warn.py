@@ -254,12 +254,13 @@ def warn_perturbation_caused_no_change(x: np.ndarray, x_perturbed: np.ndarray) -
     None
     """
     if np.allclose(x, x_perturbed, equal_nan=True):
-        print("yes")
         warnings.warn(
             "The settings for perturbing input e.g., 'perturb_func' "
             "didn't cause change in input. "
             "Reconsider the parameter settings."
         )
+        return True
+    return False
 
 
 

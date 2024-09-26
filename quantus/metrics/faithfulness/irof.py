@@ -291,7 +291,7 @@ class IROF(Metric[List[float]]):
         """
         # Predict on x.
         x_input = model.shape_input(x, x.shape, channel_first=True)
-        # CHANGED: Let's make y the index of the chosen action and  y_pred the logit of the chosen action
+        # CHANGED: Let's make y the index of the chosen action and  y_pred the prob of the chosen action
         # Old line: y_pred = float(model.predict(x_input)[:, y])
         y_pred = model.predict(x_input)[y]
 
@@ -302,7 +302,8 @@ class IROF(Metric[List[float]]):
         x_channel = x_channel[np.newaxis, :, :]
 
         # Segment image.
-        # TODO: Image segments do not seem to correspond to relevant entitities in the input image.
+        # TODO: Image segments do not seem to correspond to relevant entitities in the input image. Could just be that
+        # the input image is too small or low contrast to segment properly.
         segments = utils.get_superpixel_segments(
             img=np.moveaxis(x_channel, 0, -1).astype("double"),
             segmentation_method=self.segmentation_method,
@@ -330,7 +331,6 @@ class IROF(Metric[List[float]]):
         for i_ix, s_ix in enumerate(s_indices):
             # Perturb input by indices of attributions across all 4 frames.
             a_ix = np.nonzero((segments == s_ix).flatten())[0]
-            #  TODO: Also investigate when the perturbation does not change the input.
             x_perturbed = self.perturb_func(
                 arr=x_prev_perturbed,
                 indices=a_ix,
@@ -343,17 +343,17 @@ class IROF(Metric[List[float]]):
 
             # Predict on perturbed input x.
             x_input = model.shape_input(x_perturbed, x.shape, channel_first=True)
-            # CHANGED: y is the index of the chosen action and  y_pred the logit of the chosen action
+            # CHANGED: y is the index of the chosen action and  y_pred the prob of the chosen action
             # Old line: y_pred_perturb = float(model.predict(x_input)[:, y])
             y_pred_perturb = model.predict(x_input)[y]
 
-            # TODO: Use the absolute relative change in softmax(!) probabilities of the action logits due to
-            #  perturbation in IROF. model.predict[y] needs to be the softmax output of the model.
-            # |(y_hat_perturbed(a*) - y_hat(a*)) / y_hat(a*)| where y_hat is all the softmax probs and a* = argmax(y_hat)
-
             # Normalise the scores to be within range [0, 1].
-            # Old line: preds.append(float(y_pred_perturb / y_pred))
-            preds.append(float(abs(y_pred_perturb - y_pred) / y_pred))
+            # Old line:
+            # preds.append(float(y_pred_perturb / y_pred))
+
+            # We use the absolute relative change in softmax(!) probabilities of the action probs due to
+            # perturbation in IROF. model.predict[y] is to be the softmax output of the model.
+            preds.append(float(abs((y_pred_perturb - y_pred) / y_pred)))
             x_prev_perturbed = x_perturbed
 
         # Calculate the area over the curve (AOC) score.

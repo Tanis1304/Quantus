@@ -140,10 +140,12 @@ class PyTorchModel(ModelInterface[nn.Module]):
         elif isinstance(self.model, nn.Module):
             pred_model = self.get_softmax_arg_model()
 
-            # CHANGED: Now returning the logits as predictions
+            # CHANGED: Now returning the probs as predictions
             pred_model(torch.Tensor(x).to(self.device), **model_predict_kwargs)
-            logits = pred_model.action_dist.distribution.logits.squeeze()
-            return logits
+            # logits = pred_model.action_dist.distribution.logits.squeeze()
+            # For returning the probabilities, use the following line
+            probs = pred_model.action_dist.distribution.probs.squeeze()
+            return probs
             # old line: return pred_model(torch.Tensor(x).to(self.device), **model_predict_kwargs)[0]
         else:
             raise ValueError("Predictions cant be null")
@@ -241,7 +243,7 @@ class PyTorchModel(ModelInterface[nn.Module]):
 
         with grad_context:
             pred = self._obtain_predictions(x, model_predict_kwargs)
-            # Changed: pred is now the logits tensor, so that pred.required_grad work.
+            # Changed: pred is now the probs tensor, so that pred.required_grad work.
             if pred.requires_grad:
                 return pred.detach().cpu().numpy()
             return pred.cpu().numpy()
