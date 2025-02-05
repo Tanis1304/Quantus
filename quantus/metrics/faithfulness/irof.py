@@ -301,14 +301,19 @@ class IROF(Metric[List[float]]):
         # Adding a new axis to make the shape (1, 84, 84)
         x_channel = x_channel[np.newaxis, :, :]
 
-        # Segment image.
-        # TODO: Image segments do not seem to correspond to relevant entitities in the input image. Could just be that
-        # the input image is too small or low contrast to segment properly.
+        #Segment image.
         segments = utils.get_superpixel_segments(
             img=np.moveaxis(x_channel, 0, -1).astype("double"),
             segmentation_method=self.segmentation_method,
 
         )
+        # CHANGED: Segmentation occurs on the Grad-CAM heatmap instead of the input image
+        # segments = utils.get_superpixel_segments(
+        #     img=np.moveaxis(a, 0, -1).astype("double"),
+        #     segmentation_method=self.segmentation_method,
+        #
+        # )
+
         nr_segments = len(np.unique(segments))
         asserts.assert_nr_segments(nr_segments=nr_segments)
 
@@ -316,7 +321,7 @@ class IROF(Metric[List[float]]):
         # cv2.imwrite(f"gradcam/input_frames/input.jpg", x_channel.squeeze())
         # cv2.imwrite(f"gradcam/segments/segments.jpg", segments)
 
-        # Calculate average attribution of each segment.
+        # Calculate average attribution in each segment.
         att_segs = np.zeros(nr_segments)
         segments = segments.squeeze()
         for i, s in enumerate(range(nr_segments)):
